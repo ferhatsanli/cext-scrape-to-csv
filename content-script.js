@@ -1,264 +1,272 @@
 (() => {
-  if (window.__jobCaptureContentScriptLoaded) return;
-  window.__jobCaptureContentScriptLoaded = true;
+  if (window.__jobCopyExtensionLoaded) return;
+  window.__jobCopyExtensionLoaded = true;
 
-  let pickModeActive = false;
+  let selectionMode = false;
+  let hoverEl = null;
   let overlay = null;
-  let currentTarget = null;
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === "START_PICK_MODE") {
-      startPickMode();
+    if (message?.type === "PING") {
       sendResponse({ ok: true });
       return;
     }
 
-    if (message.type === "SCRAPE_FIELDS") {
-      const values = (message.fields || []).map((field) => scrapeField(field.selectorBundle));
-      sendResponse({ ok: true, values });
+    if (message?.type === "ENTER_SELECTION_MODE") {
+      enterSelectionMode();
+      sendResponse({ ok: true });
       return;
+    }
+
+    if (message?.type === "SCRAPE_FIELDS") {
+      const result = scrapeFields(message.payload);
+      copyText(result.clipboardText)
+        .then(() => sendResponse({ ok: true, ...result }))
+        .catch((error) => sendResponse({ ok: false, error: error.message }));
+      return true;
     }
   });
 
-  function startPickMode() {
-    if (pickModeActive) return;
-    pickModeActive = true;
+  function enterSelectionMode() {
+    if (selectionMode) return;
+    selectionMode = true;
 
-    if (!overlay) {
-      overlay = document.createElement("div");
-      overlay.id = "__job_capture_overlay";
-      overlay.style.position = "fixed";
-      overlay.style.pointerEvents = "none";
-      overlay.style.zIndex = "2147483647";
-      overlay.style.border = "2px solid #2563eb";
-      overlay.style.background = "rgba(37, 99, 235, 0.08)";
-      overlay.style.borderRadius = "6px";
-      overlay.style.display = "none";
-      document.documentElement.appendChild(overlay);
-    }
+    ensureOverlay();
 
     document.addEventListener("mousemove", onMouseMove, true);
-    document.addEventListener("click", onClickPick, true);
+    document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeyDown, true);
   }
 
-  function stopPickMode() {
-    pickModeActive = false;
-    currentTarget = null;
-
+  function exitSelectionMode() {
+    selectionMode = false;
+    hoverEl = null;
     if (overlay) {
       overlay.style.display = "none";
     }
 
     document.removeEventListener("mousemove", onMouseMove, true);
-    document.removeEventListener("click", onClickPick, true);
+    document.removeEventListener("click", onClick, true);
     document.removeEventListener("keydown", onKeyDown, true);
   }
 
-  function onKeyDown(event) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      stopPickMode();
-    }
+  function ensureOverlay() {
+    if (overlay) return;
+    overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.border = "2px solid #ff4d4f";
+    overlay.style.background = "rgba(255, 77, 79, 0.12)";
+    overlay.style.pointerEvents = "none";
+    overlay.style.zIndex = "2147483647";
+    overlay.style.display = "none";
+    document.documentElement.appendChild(overlay);
   }
 
   function onMouseMove(event) {
-    const target = getValidTarget(event.target);
-    if (!target) return;
+    const el = event.target;
+    if (!(el instanceof Element)) return;
 
-    currentTarget = target;
-    const rect = target.getBoundingClientRect();
-
+    hoverEl = el;
+    const rect = el.getBoundingClientRect();
     overlay.style.display = "block";
-    overlay.style.left = `${rect.left + window.scrollX}px`;
-    overlay.style.top = `${rect.top + window.scrollY}px`;
+    overlay.style.left = `${rect.left}px`;
+    overlay.style.top = `${rect.top}px`;
     overlay.style.width = `${rect.width}px`;
     overlay.style.height = `${rect.height}px`;
   }
 
-  async function onClickPick(event) {
-    if (!pickModeActive) return;
-
+  function onClick(event) {
     event.preventDefault();
     event.stopPropagation();
 
-    const target = getValidTarget(event.target);
-    if (!target) return;
+    if (!hoverEl) return;
 
-    const selectorBundle = buildSelectorBundle(target);
-    const fieldText = normalizeText(target.textContent || "");
-    const pageUrl = location.href;
+    const selectorBundle = buildSelectorBundle(hoverEl);
+    const previewLabel = selectorPreview(selectorBundle);
 
-    stopPickMode();
+    chrome.runtime.sendMessage({
+      type: "ELEMENT_SELECTED",
+      payload: {
+        selectorBundle,
+        previewLabel,
+        pageUrl: location.href
+      }
+    });
 
-    const response = await chrome.runtime.sendMessage({
-      type: "CONTENT_FIELD_PICKED",
-      selectorBundle,
-      fieldText,
-      pageUrl
-    }).catch(() => null);
+    exitSelectionMode();
+  }
 
-    if (!response?.ok) {
-      const fallback = await chrome.storage.local.get(null);
-      const state = fallback || {};
-      await createFieldFlow(selectorBundle, state, pageUrl);
-      return;
+  function onKeyDown(event) {
+    if (event.key === "Escape") {
+      exitSelectionMode();
     }
   }
 
-  async function createFieldFlow(selectorBundle, state, pageUrl) {
-    const all = await chrome.storage.local.get(null);
-    const settings = all.settings || { showColumnNames: true };
-    const templates = all.templates || [];
-    const activeTemplateId = all.activeTemplateId;
-    const activeListId = all.activeListId;
+  function scrapeFields({ template, list, settings }) {
+    const values = [];
+    const headers = [];
 
-    const currentTemplate = templates.find((t) => t.id === activeTemplateId);
-    if (!currentTemplate) return;
+    const sortedFields = [...(list.fields || [])].sort((a, b) => a.order - b.order);
 
-    const currentList = currentTemplate.lists.find((l) => l.id === activeListId);
-    if (!currentList) return;
-
-    let columnName = "";
-    if (settings.showColumnNames) {
-      columnName = await askColumnName();
+    for (const field of sortedFields) {
+      const text = readFieldText(field.selectorBundle);
+      values.push(text);
+      headers.push(field.columnName || "");
     }
 
-    await chrome.runtime.sendMessage({
-      type: "ADD_PICKED_FIELD_TO_STATE",
-      selectorBundle,
-      requestedColumnName: columnName
-    }).catch(() => null);
+    const clipboardText = settings.showColumnNames
+      ? `${toCsvRow(headers)}\n${toCsvRow(values)}`
+      : toCsvRow(values);
+
+    return {
+      headers,
+      values,
+      clipboardText
+    };
   }
 
-  function getValidTarget(target) {
-    if (!(target instanceof Element)) return null;
-    if (target.id === "__job_capture_overlay") return null;
-    return target;
-  }
+  function readFieldText(bundle) {
+    const selectors = [
+      bundle.primarySelector,
+      ...(bundle.fallbackSelectors || [])
+    ].filter(Boolean);
 
-  function scrapeField(selectorBundle) {
-    const target =
-      findBySelectorBundle(selectorBundle) ||
-      null;
-
-    return target ? normalizeText(target.textContent || "") : "";
-  }
-
-  function findBySelectorBundle(bundle) {
-    if (!bundle) return null;
-
-    const candidates = [];
-
-    if (bundle.idValue) {
-      const byId = document.getElementById(bundle.idValue);
-      if (byId) candidates.push(byId);
-    }
-
-    if (bundle.primarySelector) {
+    for (const selector of selectors) {
       try {
-        const node = document.querySelector(bundle.primarySelector);
-        if (node) candidates.push(node);
-      } catch {}
+        const el = document.querySelector(selector);
+        if (el) {
+          return normalizeText(el.textContent || "");
+        }
+      } catch {
+      }
     }
 
-    for (const selector of bundle.fallbackSelectors || []) {
-      try {
-        const node = document.querySelector(selector);
-        if (node) candidates.push(node);
-      } catch {}
+    return "";
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
     }
+  }
 
-    if (!candidates.length) return null;
+  function normalizeText(value) {
+    return String(value).replace(/\s+/g, " ").trim();
+  }
 
-    const textSample = normalizeText(bundle.textSample || "");
-    if (!textSample) return candidates[0];
+  function toCsvRow(values) {
+    return values
+      .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+      .join(",");
+  }
 
-    const exact = candidates.find((node) => normalizeText(node.textContent || "") === textSample);
-    return exact || candidates[0];
+  function cssEscapeSafe(value) {
+    if (window.CSS?.escape) return window.CSS.escape(value);
+    return String(value).replace(/([^a-zA-Z0-9_-])/g, "\\$1");
   }
 
   function buildSelectorBundle(element) {
     const tagName = element.tagName.toLowerCase();
-    const textSample = normalizeText(element.textContent || "").slice(0, 200);
-    const idValue = element.id || "";
+    const textSample = normalizeText(element.textContent || "").slice(0, 80);
 
-    const attrSelectors = [];
-    for (const attr of ["data-test-id", "data-testid", "data-qa", "aria-label", "name", "role"]) {
-      const value = element.getAttribute(attr);
-      if (value) {
-        attrSelectors.push(`${tagName}[${cssEscape(attr)}="${cssEscape(value)}"]`);
+    const selectors = [];
+
+    if (element.id) {
+      selectors.push({
+        type: "id",
+        selector: `#${cssEscapeSafe(element.id)}`
+      });
+    }
+
+    const stableAttrs = [
+      "data-testid",
+      "data-test-id",
+      "data-qa",
+      "data-view-name",
+      "aria-label",
+      "name",
+      "role"
+    ];
+
+    for (const attr of stableAttrs) {
+      const val = element.getAttribute(attr);
+      if (val) {
+        selectors.push({
+          type: "attribute",
+          selector: `${tagName}[${attr}="${val.replace(/"/g, '\\"')}"]`
+        });
       }
     }
 
-    const cssPath = buildCssPath(element);
-    const nthPath = buildNthPath(element);
-
-    const primarySelector =
-      idValue ? `#${cssEscape(idValue)}` :
-      attrSelectors[0] || cssPath || nthPath || tagName;
-
-    const fallbackSelectors = [];
-    for (const item of [attrSelectors[0], cssPath, nthPath]) {
-      if (item && item !== primarySelector && !fallbackSelectors.includes(item)) {
-        fallbackSelectors.push(item);
-      }
+    const classSelector = buildClassBasedSelector(element);
+    if (classSelector) {
+      selectors.push({
+        type: "class",
+        selector: classSelector
+      });
     }
+
+    const structuralSelector = buildStructuralSelector(element);
+    if (structuralSelector) {
+      selectors.push({
+        type: "structural",
+        selector: structuralSelector
+      });
+    }
+
+    const unique = dedupeSelectors(selectors);
 
     return {
-      primaryType: idValue ? "id" : attrSelectors[0] ? "attribute" : "css",
-      primarySelector,
-      fallbackSelectors,
+      primaryType: unique[0]?.type || "unknown",
+      primarySelector: unique[0]?.selector || tagName,
+      fallbackSelectors: unique.slice(1).map((s) => s.selector),
       tagName,
-      textSample,
-      idValue
+      textSample
     };
   }
 
-  function buildCssPath(element) {
+  function buildClassBasedSelector(element) {
+    const tagName = element.tagName.toLowerCase();
+    const classes = [...element.classList].filter(Boolean).slice(0, 3);
+    if (!classes.length) return null;
+    return `${tagName}.${classes.map(cssEscapeSafe).join(".")}`;
+  }
+
+  function buildStructuralSelector(element) {
     const parts = [];
     let current = element;
     let depth = 0;
 
     while (current && current.nodeType === Node.ELEMENT_NODE && depth < 5) {
-      let part = current.tagName.toLowerCase();
+      const tag = current.tagName.toLowerCase();
+      let part = tag;
 
       if (current.id) {
-        part += `#${cssEscape(current.id)}`;
+        part = `#${cssEscapeSafe(current.id)}`;
         parts.unshift(part);
         break;
       }
 
-      const stableClass = [...current.classList].find((cls) => /^[a-zA-Z0-9_-]+$/.test(cls));
-      if (stableClass) {
-        part += `.${cssEscape(stableClass)}`;
+      const parent = current.parentElement;
+      if (parent) {
+        const siblings = [...parent.children].filter((child) => child.tagName === current.tagName);
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(current) + 1;
+          part += `:nth-of-type(${index})`;
+        }
       }
 
       parts.unshift(part);
-      current = current.parentElement;
-      depth += 1;
-    }
-
-    return parts.join(" > ");
-  }
-
-  function buildNthPath(element) {
-    const parts = [];
-    let current = element;
-    let depth = 0;
-
-    while (current && current.nodeType === Node.ELEMENT_NODE && depth < 6) {
-      const tag = current.tagName.toLowerCase();
-      const parent = current.parentElement;
-      if (!parent) {
-        parts.unshift(tag);
-        break;
-      }
-
-      const sameTagSiblings = [...parent.children].filter((node) => node.tagName === current.tagName);
-      const index = sameTagSiblings.indexOf(current) + 1;
-      parts.unshift(`${tag}:nth-of-type(${index})`);
       current = parent;
       depth += 1;
     }
@@ -266,19 +274,17 @@
     return parts.join(" > ");
   }
 
-  function normalizeText(text) {
-    return String(text || "").replace(/\s+/g, " ").trim();
+  function dedupeSelectors(selectors) {
+    const seen = new Set();
+    return selectors.filter((item) => {
+      if (!item.selector || seen.has(item.selector)) return false;
+      seen.add(item.selector);
+      return true;
+    });
   }
 
-  function cssEscape(value) {
-    if (window.CSS && typeof window.CSS.escape === "function") {
-      return window.CSS.escape(value);
-    }
-    return String(value).replace(/["\\.#:[\]()=<>+~*^$|]/g, "\\$&");
-  }
-
-  async function askColumnName() {
-    const result = prompt("Column name:");
-    return result == null ? "" : result.trim();
+  function selectorPreview(bundle) {
+    const raw = bundle.primarySelector || bundle.tagName || "unknown";
+    return raw.length <= 10 ? raw : `...${raw.slice(-10)}`;
   }
 })();

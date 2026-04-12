@@ -1,149 +1,92 @@
 import {
   getState,
-  setState,
   getActiveTemplate,
-  getActiveList,
-  getTemplateForUrl,
-  normalizeFields,
-  nextGenericColumnName,
-  selectorPreview,
-  toCsvLine,
-  uuid
-} from "./shared.js";
-
-chrome.runtime.onInstalled.addListener(async () => {
-  await getState();
-});
+  getActiveList
+} from "./storage.js";
 
 chrome.commands.onCommand.addListener(async (command) => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !tab?.url) return;
-
-  if (command === "start-pick-mode") {
-    await startPickMode(tab.id, tab.url);
-  }
-
-  if (command === "scrape-now") {
-    await scrapeAndCopy(tab.id, tab.url);
+  try {
+    if (command === "select-element") {
+      await startSelectionMode();
+    } else if (command === "scrape-now") {
+      await scrapeNowAndCopy();
+    }
+  } catch (error) {
+    console.error("Command error:", error);
   }
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  (async () => {
-    if (message.type === "POPUP_START_PICK_MODE") {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id || !tab?.url) {
-        sendResponse({ ok: false, error: "No active tab" });
-        return;
-      }
-      await startPickMode(tab.id, tab.url);
-      sendResponse({ ok: true });
-      return;
-    }
+  if (message?.type === "START_SELECTION_MODE") {
+    startSelectionMode().then(() => sendResponse({ ok: true })).catch((error) => {
+      sendResponse({ ok: false, error: error.message });
+    });
+    return true;
+  }
 
-    if (message.type === "POPUP_SCRAPE_NOW") {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id || !tab?.url) {
-        sendResponse({ ok: false, error: "No active tab" });
-        return;
-      }
-      const result = await scrapeAndCopy(tab.id, tab.url);
-      sendResponse(result);
-      return;
-    }
-
-    if (message.type === "WRITE_CLIPBOARD") {
-      await writeClipboard(message.text || "");
-      sendResponse({ ok: true });
-      return;
-    }
-  })();
-
-  return true;
+  if (message?.type === "SCRAPE_NOW") {
+    scrapeNowAndCopy().then((result) => {
+      sendResponse({ ok: true, result });
+    }).catch((error) => {
+      sendResponse({ ok: false, error: error.message });
+    });
+    return true;
+  }
 });
 
-async function injectContentScript(tabId) {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: ["content-script.js"]
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({
+    active: true,
+    currentWindow: true
+  });
+
+  if (!tab?.id) {
+    throw new Error("Active tab not found");
+  }
+
+  return tab;
+}
+
+async function ensureContentScript(tabId) {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "PING" });
+  } catch {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content-script.js"]
+    });
+  }
+}
+
+async function startSelectionMode() {
+  const tab = await getActiveTab();
+  await ensureContentScript(tab.id);
+
+  await chrome.tabs.sendMessage(tab.id, {
+    type: "ENTER_SELECTION_MODE"
   });
 }
 
-async function startPickMode(tabId, url) {
+async function scrapeNowAndCopy() {
   const state = await getState();
-  const matchedTemplate = getTemplateForUrl(state, url);
+  const template = getActiveTemplate(state);
+  const list = getActiveList(state);
 
-  if (matchedTemplate) {
-    state.activeTemplateId = matchedTemplate.id;
-    if (!matchedTemplate.lists.some((l) => l.id === state.activeListId)) {
-      state.activeListId = matchedTemplate.lists[0]?.id;
-    }
-    await setState(state);
+  if (!template || !list) {
+    throw new Error("Active template or list not found");
   }
 
-  await injectContentScript(tabId);
+  const tab = await getActiveTab();
+  await ensureContentScript(tab.id);
 
-  await chrome.tabs.sendMessage(tabId, {
-    type: "START_PICK_MODE"
-  });
-}
-
-async function scrapeAndCopy(tabId, url) {
-  const state = await getState();
-  const template = getTemplateForUrl(state, url) || getActiveTemplate(state);
-  const list = template.lists.find((l) => l.id === state.activeListId) || template.lists[0];
-
-  if (!list || !list.fields.length) {
-    return { ok: false, error: "No fields configured" };
-  }
-
-  await injectContentScript(tabId);
-
-  const response = await chrome.tabs.sendMessage(tabId, {
+  const response = await chrome.tabs.sendMessage(tab.id, {
     type: "SCRAPE_FIELDS",
-    fields: list.fields
+    payload: {
+      template,
+      list,
+      settings: state.settings
+    }
   });
 
-  if (!response?.ok) {
-    return { ok: false, error: response?.error || "Scrape failed" };
-  }
-
-  const values = response.values || [];
-  let payload = "";
-
-  if (state.settings.showColumnNames) {
-    payload = [
-      toCsvLine(list.fields.map((f) => f.columnName)),
-      toCsvLine(values)
-    ].join("\n");
-  } else {
-    payload = toCsvLine(values);
-  }
-
-  await writeClipboard(payload);
-  return { ok: true, text: payload };
-}
-
-async function ensureOffscreenDocument() {
-  const url = chrome.runtime.getURL("offscreen.html");
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: ["OFFSCREEN_DOCUMENT"],
-    documentUrls: [url]
-  });
-
-  if (contexts.length > 0) return;
-
-  await chrome.offscreen.createDocument({
-    url: "offscreen.html",
-    reasons: ["CLIPBOARD"],
-    justification: "Write captured CSV data to the clipboard."
-  });
-}
-
-async function writeClipboard(text) {
-  await ensureOffscreenDocument();
-  await chrome.runtime.sendMessage({
-    type: "OFFSCREEN_WRITE_CLIPBOARD",
-    text
-  });
+  return response;
 }

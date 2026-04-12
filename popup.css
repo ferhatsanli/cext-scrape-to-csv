@@ -1,14 +1,13 @@
-:root {
-  color-scheme: light dark;
-  font-family: Arial, sans-serif;
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  min-width: 420px;
-  max-width: 420px;
-  background: #f8fafc;
-  color: #111827;
+  width: 420px;
+  font-family: Arial, sans-serif;
+  background: #f7f8fa;
+  color: #1f2937;
 }
 
 .app {
@@ -17,177 +16,206 @@ body {
 
 .topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .topbar h1 {
-  margin: 0 0 6px 0;
+  margin: 0;
   font-size: 16px;
 }
 
-.subline {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.section {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
 }
 
-.controls {
-  margin-top: 12px;
-  display: grid;
-  gap: 10px;
+.label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: #4b5563;
+}
+
+.row {
+  display: flex;
+  gap: 6px;
+}
+
+.row select {
+  flex: 1;
+}
+
+select,
+input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
 }
 
 .checkbox-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  user-select: none;
 }
 
-.button-row {
+.actions {
   display: flex;
   gap: 8px;
 }
 
 button {
-  border: 1px solid #cbd5e1;
-  background: white;
-  color: #111827;
-  padding: 8px 10px;
-  border-radius: 8px;
   cursor: pointer;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
 }
 
-button.primary {
+.primary-btn {
   background: #2563eb;
   color: white;
-  border-color: #2563eb;
+  flex: 1;
 }
 
-button.secondary {
-  background: white;
-}
-
-button.danger {
-  background: #dc2626;
+.secondary-btn {
+  background: #111827;
   color: white;
-  border-color: #dc2626;
+  flex: 1;
 }
 
-button.small {
-  width: 36px;
-  height: 36px;
+.ghost-btn {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.danger-btn {
+  background: #ef4444;
+  color: white;
+}
+
+.small-btn {
+  width: 32px;
   padding: 0;
+  flex: 0 0 32px;
 }
 
-.table-wrap {
-  margin-top: 12px;
-}
-
-table {
+.fields-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
-  border-radius: 10px;
-  overflow: hidden;
 }
 
-th, td {
+.fields-table th,
+.fields-table td {
   border-bottom: 1px solid #e5e7eb;
+  padding: 8px 6px;
+  font-size: 12px;
   text-align: left;
-  padding: 8px;
-  font-size: 13px;
   vertical-align: middle;
 }
 
-th {
-  background: #f1f5f9;
+.fields-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .drag-handle {
   cursor: grab;
-  user-select: none;
-  font-weight: bold;
-  letter-spacing: 1px;
-}
-
-.delete-button {
-  background: transparent;
-  border: none;
-  color: #dc2626;
   font-size: 18px;
-  padding: 0;
+  line-height: 1;
+  user-select: none;
 }
 
-.selector-preview {
-  display: inline-block;
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.delete-field-btn {
+  background: #ef4444;
+  color: white;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
 }
 
 .empty-state {
-  padding: 12px;
-  text-align: center;
-  color: #64748b;
+  display: none;
+  padding: 10px 4px 2px;
+  font-size: 12px;
+  color: #6b7280;
 }
 
-.toast {
-  margin-top: 12px;
-  padding: 10px;
+.undo-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   background: #111827;
   color: white;
-  border-radius: 8px;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.undo-actions {
   display: flex;
-  gap: 10px;
-  align-items: center;
+  gap: 6px;
+}
+
+.undo-actions .ghost-btn {
+  background: #374151;
+  color: white;
 }
 
 .hidden {
   display: none;
 }
 
-.link-button {
-  background: transparent;
-  border: none;
-  color: #93c5fd;
-  padding: 0;
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
 }
 
-dialog {
-  border: none;
-  border-radius: 12px;
-  padding: 0;
+.dialog-box {
   width: 320px;
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
 }
 
-.dialog-form {
-  padding: 16px;
-  display: grid;
-  gap: 12px;
+.dialog-box h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
 }
 
-.dialog-form h2 {
-  margin: 0;
-  font-size: 16px;
+.dialog-box p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #4b5563;
 }
 
-.dialog-label {
-  display: block;
-}
-
-.dialog-form input {
+.dialog-input {
   width: 100%;
-  padding: 8px;
-  box-sizing: border-box;
+  margin-bottom: 10px;
 }
 
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 0;
-  margin: 0;
+}
+
+.tooltip-cell {
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

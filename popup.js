@@ -1,419 +1,450 @@
 import {
   getState,
-  setState,
-  getLanguageStrings,
   getActiveTemplate,
   getActiveList,
-  normalizeFields,
-  selectorTooltip,
+  updateSettings,
+  setActiveTemplate,
+  setActiveList,
+  createList,
+  renameList,
+  deleteList,
+  createTemplate,
+  renameTemplate,
+  deleteTemplate,
   nextGenericColumnName,
-  areSelectorBundlesSimilar,
-  selectorPreview,
-  uuid
-} from "./shared.js";
+  upsertField,
+  deleteField,
+  undoPendingDelete,
+  clearPendingUndo,
+  reorderFields
+} from "./storage.js";
+import { t } from "./i18n.js";
+import { promptDialog, confirmThreeWayDialog } from "./dialogs.js";
+import { isDuplicateField } from "./selectors.js";
 
-let state = await getState();
-let strings = getLanguageStrings(state.settings.language);
+const refs = {};
 
-const elements = {
-  appTitle: document.getElementById("appTitle"),
-  activeListLabel: document.getElementById("activeListLabel"),
-  listSelect: document.getElementById("listSelect"),
-  openSettingsButton: document.getElementById("openSettingsButton"),
-  showColumnNamesCheckbox: document.getElementById("showColumnNamesCheckbox"),
-  columnNamesLabel: document.getElementById("columnNamesLabel"),
-  selectElementButton: document.getElementById("selectElementButton"),
-  scrapeNowButton: document.getElementById("scrapeNowButton"),
-  newListButton: document.getElementById("newListButton"),
-  renameListButton: document.getElementById("renameListButton"),
-  deleteListButton: document.getElementById("deleteListButton"),
-  tableHeadRow: document.getElementById("tableHeadRow"),
-  fieldsTableBody: document.getElementById("fieldsTableBody"),
-  emptyState: document.getElementById("emptyState"),
-  toast: document.getElementById("toast"),
-  toastText: document.getElementById("toastText"),
-  toastUndoButton: document.getElementById("toastUndoButton"),
-  toastDismissButton: document.getElementById("toastDismissButton"),
-  nameDialog: document.getElementById("nameDialog"),
-  nameDialogTitle: document.getElementById("nameDialogTitle"),
-  nameDialogLabel: document.getElementById("nameDialogLabel"),
-  nameDialogInput: document.getElementById("nameDialogInput"),
-  nameDialogCancel: document.getElementById("nameDialogCancel"),
-  nameDialogOk: document.getElementById("nameDialogOk"),
-  duplicateDialog: document.getElementById("duplicateDialog"),
-  duplicateDialogTitle: document.getElementById("duplicateDialogTitle"),
-  duplicateDialogMessage: document.getElementById("duplicateDialogMessage"),
-  duplicateDialogCancel: document.getElementById("duplicateDialogCancel"),
-  duplicateDialogDuplicate: document.getElementById("duplicateDialogDuplicate"),
-  duplicateDialogUpdate: document.getElementById("duplicateDialogUpdate")
-};
+document.addEventListener("DOMContentLoaded", init);
 
-bindEvents();
-render();
+async function init() {
+  cacheRefs();
+  bindEvents();
+  chrome.runtime.onMessage.addListener(onRuntimeMessage);
+  await render();
+  startUndoWatcher();
+}
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  (async () => {
-    if (message.type === "CONTENT_FIELD_PICKED") {
-      await handlePickedField(message.selectorBundle);
-      sendResponse({ ok: true });
-      return;
-    }
-
-    if (message.type === "ADD_PICKED_FIELD_TO_STATE") {
-      await handlePickedField(message.selectorBundle, message.requestedColumnName || "");
-      sendResponse({ ok: true });
-      return;
-    }
-  })();
-
-  return true;
-});
-
-async function refreshState() {
-  state = await getState();
-  strings = getLanguageStrings(state.settings.language);
+function cacheRefs() {
+  refs.appTitle = document.getElementById("appTitle");
+  refs.openSettingsBtn = document.getElementById("openSettingsBtn");
+  refs.templateSelect = document.getElementById("templateSelect");
+  refs.newTemplateBtn = document.getElementById("newTemplateBtn");
+  refs.renameTemplateBtn = document.getElementById("renameTemplateBtn");
+  refs.deleteTemplateBtn = document.getElementById("deleteTemplateBtn");
+  refs.listSelect = document.getElementById("listSelect");
+  refs.newListBtn = document.getElementById("newListBtn");
+  refs.renameListBtn = document.getElementById("renameListBtn");
+  refs.deleteListBtn = document.getElementById("deleteListBtn");
+  refs.showColumnNamesCheckbox = document.getElementById("showColumnNamesCheckbox");
+  refs.selectElementBtn = document.getElementById("selectElementBtn");
+  refs.scrapeNowBtn = document.getElementById("scrapeNowBtn");
+  refs.fieldsTbody = document.getElementById("fieldsTbody");
+  refs.tableHeadRow = document.getElementById("tableHeadRow");
+  refs.emptyState = document.getElementById("emptyState");
+  refs.undoBar = document.getElementById("undoBar");
+  refs.undoText = document.getElementById("undoText");
+  refs.undoBtn = document.getElementById("undoBtn");
+  refs.dismissUndoBtn = document.getElementById("dismissUndoBtn");
+  refs.activeTemplateLabel = document.getElementById("activeTemplateLabel");
+  refs.activeListLabel = document.getElementById("activeListLabel");
+  refs.columnNamesLabel = document.getElementById("columnNamesLabel");
 }
 
 function bindEvents() {
-  elements.showColumnNamesCheckbox.addEventListener("change", async (event) => {
-    state.settings.showColumnNames = event.target.checked;
-    await setState(state);
-    render();
+  refs.openSettingsBtn.addEventListener("click", () => chrome.runtime.openOptionsPage());
+
+  refs.templateSelect.addEventListener("change", async (e) => {
+    await setActiveTemplate(e.target.value);
+    await render();
   });
 
-  elements.listSelect.addEventListener("change", async (event) => {
-    state.activeListId = event.target.value;
-    await setState(state);
-    render();
+  refs.listSelect.addEventListener("change", async (e) => {
+    await setActiveList(e.target.value);
+    await render();
   });
 
-  elements.selectElementButton.addEventListener("click", async () => {
-    await chrome.runtime.sendMessage({ type: "POPUP_START_PICK_MODE" });
+  refs.showColumnNamesCheckbox.addEventListener("change", async (e) => {
+    await updateSettings({ showColumnNames: e.target.checked });
+    await render();
+  });
+
+  refs.selectElementBtn.addEventListener("click", async () => {
+    await chrome.runtime.sendMessage({ type: "START_SELECTION_MODE" });
     window.close();
   });
 
-  elements.scrapeNowButton.addEventListener("click", async () => {
-    await chrome.runtime.sendMessage({ type: "POPUP_SCRAPE_NOW" });
-    window.close();
-  });
-
-  elements.newListButton.addEventListener("click", async () => {
-    const value = await openNameDialog(strings.createList, strings.listName, "");
-    const name = (value || "").trim() || `List ${Date.now()}`;
-
-    const template = getActiveTemplate(state);
-    const newList = {
-      id: uuid("list"),
-      name,
-      fields: []
-    };
-
-    template.lists.push(newList);
-    state.activeListId = newList.id;
-    await setState(state);
-    render();
-  });
-
-  elements.renameListButton.addEventListener("click", async () => {
-    const list = getActiveList(state);
-    const value = await openNameDialog(strings.renameList, strings.listName, list.name);
-    if (!value) return;
-
-    list.name = value.trim();
-    await setState(state);
-    render();
-  });
-
-  elements.deleteListButton.addEventListener("click", async () => {
-    const template = getActiveTemplate(state);
-    if (template.lists.length === 1) {
-      alert(strings.cannotDeleteOnlyList);
+  refs.scrapeNowBtn.addEventListener("click", async () => {
+    const response = await chrome.runtime.sendMessage({ type: "SCRAPE_NOW" });
+    if (!response?.ok) {
+      alert(response?.error || "Scrape failed");
       return;
     }
-
-    const confirmed = confirm(strings.deleteListConfirm);
-    if (!confirmed) return;
-
-    template.lists = template.lists.filter((l) => l.id !== state.activeListId);
-    state.activeListId = template.lists[0].id;
-    await setState(state);
-    render();
   });
 
-  elements.openSettingsButton.addEventListener("click", () => {
-    chrome.runtime.openOptionsPage();
+  refs.newListBtn.addEventListener("click", async () => {
+    const state = await getState();
+    const lang = state.settings.language;
+    const result = await promptDialog({
+      title: t(lang, "newList"),
+      message: t(lang, "nameList"),
+      defaultValue: ""
+    });
+
+    if (result.action === "ok") {
+      await createList(result.value);
+      await render();
+    }
   });
 
-  elements.toastUndoButton.addEventListener("click", async () => {
-    if (!state.pendingDelete) return;
-
-    const template = getActiveTemplate(state);
+  refs.renameListBtn.addEventListener("click", async () => {
+    const state = await getState();
     const list = getActiveList(state);
-    list.fields.splice(state.pendingDelete.index, 0, state.pendingDelete.field);
-    list.fields = normalizeFields(list.fields);
-    state.pendingDelete = null;
+    const lang = state.settings.language;
 
-    await setState(state);
-    hideToast();
-    render();
+    const result = await promptDialog({
+      title: t(lang, "renameList"),
+      message: t(lang, "nameList"),
+      defaultValue: list?.name || ""
+    });
+
+    if (result.action === "ok" && list) {
+      await renameList(list.id, result.value);
+      await render();
+    }
   });
 
-  elements.toastDismissButton.addEventListener("click", async () => {
-    state.pendingDelete = null;
-    await setState(state);
-    hideToast();
+  refs.deleteListBtn.addEventListener("click", async () => {
+    try {
+      await deleteList(refs.listSelect.value);
+      await render();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+
+  refs.newTemplateBtn.addEventListener("click", async () => {
+    const state = await getState();
+    const lang = state.settings.language;
+
+    const nameResult = await promptDialog({
+      title: t(lang, "addTemplate"),
+      message: t(lang, "nameTemplate"),
+      defaultValue: ""
+    });
+
+    if (nameResult.action !== "ok") return;
+
+    const urlResult = await promptDialog({
+      title: t(lang, "urlMatch"),
+      message: t(lang, "urlMatch"),
+      defaultValue: ""
+    });
+
+    if (urlResult.action !== "ok") return;
+
+    await createTemplate(nameResult.value, urlResult.value);
+    await render();
+  });
+
+  refs.renameTemplateBtn.addEventListener("click", async () => {
+    const state = await getState();
+    const template = getActiveTemplate(state);
+    const lang = state.settings.language;
+
+    const result = await promptDialog({
+      title: t(lang, "renameTemplate"),
+      message: t(lang, "nameTemplate"),
+      defaultValue: template?.name || ""
+    });
+
+    if (result.action === "ok" && template) {
+      await renameTemplate(template.id, result.value);
+      await render();
+    }
+  });
+
+  refs.deleteTemplateBtn.addEventListener("click", async () => {
+    try {
+      await deleteTemplate(refs.templateSelect.value);
+      await render();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+
+  refs.undoBtn.addEventListener("click", async () => {
+    await undoPendingDelete();
+    await render();
+  });
+
+  refs.dismissUndoBtn.addEventListener("click", async () => {
+    await clearPendingUndo();
+    await render();
   });
 }
 
-function render() {
-  strings = getLanguageStrings(state.settings.language);
-
-  elements.appTitle.textContent = strings.appTitle;
-  elements.activeListLabel.textContent = strings.activeList;
-  elements.columnNamesLabel.textContent = strings.columnNames;
-  elements.selectElementButton.textContent = strings.selectElement;
-  elements.scrapeNowButton.textContent = strings.scrapeNow;
-  elements.newListButton.textContent = strings.addList;
-  elements.renameListButton.textContent = strings.renameList;
-  elements.deleteListButton.textContent = strings.deleteList;
-  elements.emptyState.textContent = strings.noFields;
-  elements.toastUndoButton.textContent = strings.undo;
-  elements.toastDismissButton.textContent = strings.dismiss;
-
-  elements.nameDialogCancel.textContent = strings.cancel;
-  elements.nameDialogOk.textContent = strings.ok;
-  elements.duplicateDialogTitle.textContent = strings.duplicateTitle;
-  elements.duplicateDialogMessage.textContent = strings.duplicateMessage;
-  elements.duplicateDialogCancel.textContent = strings.cancel;
-  elements.duplicateDialogDuplicate.textContent = strings.createDuplicate;
-  elements.duplicateDialogUpdate.textContent = strings.update;
-
-  elements.showColumnNamesCheckbox.checked = !!state.settings.showColumnNames;
-
-  renderListSelect();
-  renderTable();
+async function onRuntimeMessage(message) {
+  if (message?.type === "ELEMENT_SELECTED") {
+    await handleElementSelected(message.payload);
+  }
 }
 
-function renderListSelect() {
+async function handleElementSelected(payload) {
+  const state = await getState();
   const template = getActiveTemplate(state);
   const list = getActiveList(state);
 
-  elements.listSelect.innerHTML = "";
-  for (const item of template.lists) {
-    const option = document.createElement("option");
-    option.value = item.id;
-    option.textContent = item.name;
-    option.selected = item.id === list.id;
-    elements.listSelect.appendChild(option);
+  if (!template || !list) return;
+
+  const lang = state.settings.language;
+  const duplicate = list.fields.find((f) => isDuplicateField(f, payload.selectorBundle));
+
+  let columnName;
+  if (state.settings.showColumnNames) {
+    const result = await promptDialog({
+      title: t(lang, "columnName"),
+      message: t(lang, "columnNamePrompt"),
+      defaultValue: ""
+    });
+
+    if (result.action === "ok" && result.value) {
+      columnName = result.value;
+    } else {
+      columnName = nextGenericColumnName(list.fields);
+    }
+  } else {
+    columnName = nextGenericColumnName(list.fields);
   }
+
+  const baseField = {
+    columnName,
+    order: list.fields.length + 1,
+    selectorBundle: payload.selectorBundle,
+    previewLabel: payload.previewLabel
+  };
+
+  if (duplicate) {
+    const action = await confirmThreeWayDialog({
+      title: t(lang, "duplicateTitle"),
+      message: t(lang, "duplicateMessage")
+    });
+
+    if (action === "cancel") return;
+
+    if (action === "update") {
+      await upsertField({
+        templateId: template.id,
+        listId: list.id,
+        mode: "update",
+        field: {
+          ...duplicate,
+          ...baseField,
+          id: duplicate.id
+        }
+      });
+    }
+
+    if (action === "duplicate") {
+      await upsertField({
+        templateId: template.id,
+        listId: list.id,
+        mode: "create",
+        field: baseField
+      });
+    }
+  } else {
+    await upsertField({
+      templateId: template.id,
+      listId: list.id,
+      mode: "create",
+      field: baseField
+    });
+  }
+
+  await render();
 }
 
-function renderTable() {
+async function render() {
+  const state = await getState();
+  const lang = state.settings.language;
+  const template = getActiveTemplate(state);
   const list = getActiveList(state);
-  list.fields = normalizeFields(list.fields);
 
-  const showNames = !!state.settings.showColumnNames;
+  refs.appTitle.textContent = t(lang, "appTitle");
+  refs.openSettingsBtn.textContent = t(lang, "settings");
+  refs.activeTemplateLabel.textContent = t(lang, "activeTemplate");
+  refs.activeListLabel.textContent = t(lang, "activeList");
+  refs.columnNamesLabel.textContent = t(lang, "columnNames");
+  refs.selectElementBtn.textContent = t(lang, "selectElement");
+  refs.scrapeNowBtn.textContent = t(lang, "scrapeNow");
+  refs.emptyState.textContent = t(lang, "noFields");
+  refs.undoText.textContent = t(lang, "fieldRemoved");
+  refs.undoBtn.textContent = t(lang, "undo");
+  refs.dismissUndoBtn.textContent = t(lang, "dismiss");
 
-  elements.tableHeadRow.innerHTML = "";
+  refs.showColumnNamesCheckbox.checked = state.settings.showColumnNames;
 
-  if (showNames) {
-    appendHeader(strings.columnName);
+  renderTemplateSelect(state.templates, state.activeTemplateId);
+  renderListSelect(template?.lists || [], state.activeListId);
+  renderTableHeader(state.settings.showColumnNames, lang);
+  renderFields(list?.fields || [], state.settings.showColumnNames, lang);
+
+  refs.undoBar.classList.toggle("hidden", !state.pendingUndo);
+}
+
+function renderTemplateSelect(templates, activeTemplateId) {
+  refs.templateSelect.innerHTML = templates
+    .map((template) => `<option value="${template.id}" ${template.id === activeTemplateId ? "selected" : ""}>${escapeHtml(template.name)}</option>`)
+    .join("");
+}
+
+function renderListSelect(lists, activeListId) {
+  refs.listSelect.innerHTML = lists
+    .map((list) => `<option value="${list.id}" ${list.id === activeListId ? "selected" : ""}>${escapeHtml(list.name)}</option>`)
+    .join("");
+}
+
+function renderTableHeader(showColumnNames, lang) {
+  const cols = [];
+  if (showColumnNames) {
+    cols.push(`<th>${escapeHtml(t(lang, "columnName"))}</th>`);
   }
-  appendHeader(strings.selectorPreview);
-  appendHeader(strings.reorder);
-  appendHeader(strings.remove);
+  cols.push(`<th>${escapeHtml(t(lang, "selectorPreview"))}</th>`);
+  cols.push(`<th>${escapeHtml(t(lang, "reorder"))}</th>`);
+  cols.push(`<th>${escapeHtml(t(lang, "delete"))}</th>`);
+  refs.tableHeadRow.innerHTML = cols.join("");
+}
 
-  elements.fieldsTableBody.innerHTML = "";
+function renderFields(fields, showColumnNames, lang) {
+  const sorted = [...fields].sort((a, b) => a.order - b.order);
+  refs.fieldsTbody.innerHTML = "";
 
-  if (!list.fields.length) {
-    elements.emptyState.classList.remove("hidden");
+  if (!sorted.length) {
+    refs.emptyState.style.display = "block";
     return;
   }
 
-  elements.emptyState.classList.add("hidden");
+  refs.emptyState.style.display = "none";
 
-  list.fields.forEach((field, index) => {
+  for (const field of sorted) {
     const tr = document.createElement("tr");
     tr.draggable = true;
     tr.dataset.fieldId = field.id;
 
-    tr.addEventListener("dragstart", (event) => {
-      event.dataTransfer.setData("text/plain", field.id);
-    });
+    const tooltip = buildTooltip(field.selectorBundle);
 
-    tr.addEventListener("dragover", (event) => {
-      event.preventDefault();
-    });
-
-    tr.addEventListener("drop", async (event) => {
-      event.preventDefault();
-      const draggedId = event.dataTransfer.getData("text/plain");
-      if (!draggedId || draggedId === field.id) return;
-
-      const current = [...list.fields];
-      const fromIndex = current.findIndex((item) => item.id === draggedId);
-      const toIndex = current.findIndex((item) => item.id === field.id);
-      const [moved] = current.splice(fromIndex, 1);
-      current.splice(toIndex, 0, moved);
-
-      list.fields = normalizeFields(current);
-      await setState(state);
-      render();
-    });
-
-    if (showNames) {
-      const nameTd = document.createElement("td");
-      nameTd.textContent = field.columnName;
-      tr.appendChild(nameTd);
+    if (showColumnNames) {
+      tr.appendChild(td(field.columnName || ""));
     }
 
-    const selectorTd = document.createElement("td");
-    const selectorSpan = document.createElement("span");
-    selectorSpan.className = "selector-preview";
-    selectorSpan.textContent = field.previewLabel || selectorPreview(field.selectorBundle);
-    selectorSpan.title = selectorTooltip(field.selectorBundle);
-    selectorTd.appendChild(selectorSpan);
-    tr.appendChild(selectorTd);
+    const selectorCell = td(field.previewLabel || "");
+    selectorCell.classList.add("tooltip-cell");
+    selectorCell.title = tooltip;
+    tr.appendChild(selectorCell);
 
-    const dragTd = document.createElement("td");
-    const dragSpan = document.createElement("span");
-    dragSpan.className = "drag-handle";
-    dragSpan.textContent = "≡";
-    dragTd.appendChild(dragSpan);
-    tr.appendChild(dragTd);
+    const handleCell = td("≡");
+    handleCell.classList.add("drag-handle");
+    tr.appendChild(handleCell);
 
-    const deleteTd = document.createElement("td");
-    const deleteButton = document.createElement("button");
-    deleteButton.className = "delete-button";
-    deleteButton.textContent = "✕";
-    deleteButton.addEventListener("click", async () => {
-      const removed = list.fields[index];
-      list.fields = list.fields.filter((item) => item.id !== removed.id);
-      list.fields = normalizeFields(list.fields);
-
-      state.pendingDelete = {
-        field: removed,
-        index
-      };
-
-      await setState(state);
-      showToast(strings.fieldRemoved);
-      render();
-
-      setTimeout(async () => {
-        const latest = await getState();
-        if (latest.pendingDelete?.field?.id === removed.id) {
-          latest.pendingDelete = null;
-          state = latest;
-          await setState(state);
-          hideToast();
-        }
-      }, 5000);
+    const deleteCell = document.createElement("td");
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "delete-field-btn";
+    deleteBtn.textContent = "×";
+    deleteBtn.addEventListener("click", async () => {
+      const state = await getState();
+      const template = getActiveTemplate(state);
+      const list = getActiveList(state);
+      await deleteField(template.id, list.id, field.id);
+      await render();
     });
+    deleteCell.appendChild(deleteBtn);
+    tr.appendChild(deleteCell);
 
-    deleteTd.appendChild(deleteButton);
-    tr.appendChild(deleteTd);
+    addDragAndDrop(tr);
+    refs.fieldsTbody.appendChild(tr);
+  }
+}
 
-    elements.fieldsTableBody.appendChild(tr);
+function addDragAndDrop(row) {
+  row.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData("text/plain", row.dataset.fieldId);
+  });
+
+  row.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+
+  row.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    const targetId = row.dataset.fieldId;
+    if (!draggedId || !targetId || draggedId === targetId) return;
+
+    const ids = [...refs.fieldsTbody.querySelectorAll("tr")].map((tr) => tr.dataset.fieldId);
+    const draggedIndex = ids.indexOf(draggedId);
+    const targetIndex = ids.indexOf(targetId);
+
+    ids.splice(draggedIndex, 1);
+    ids.splice(targetIndex, 0, draggedId);
+
+    const state = await getState();
+    const template = getActiveTemplate(state);
+    const list = getActiveList(state);
+
+    await reorderFields(template.id, list.id, ids);
+    await render();
   });
 }
 
-function appendHeader(text) {
-  const th = document.createElement("th");
-  th.textContent = text;
-  elements.tableHeadRow.appendChild(th);
+function td(text) {
+  const cell = document.createElement("td");
+  cell.textContent = text;
+  return cell;
 }
 
-function showToast(message) {
-  elements.toastText.textContent = message;
-  elements.toast.classList.remove("hidden");
+function buildTooltip(bundle = {}) {
+  const lines = [
+    `Primary: ${bundle.primarySelector || ""}`
+  ];
+
+  for (const fallback of bundle.fallbackSelectors || []) {
+    lines.push(`Fallback: ${fallback}`);
+  }
+
+  if (bundle.textSample) {
+    lines.push(`Text sample: ${bundle.textSample}`);
+  }
+
+  return lines.join("\n");
 }
 
-function hideToast() {
-  elements.toast.classList.add("hidden");
-}
+function startUndoWatcher() {
+  setInterval(async () => {
+    const state = await getState();
+    if (!state.pendingUndo) return;
 
-async function handlePickedField(selectorBundle, requestedColumnName = "") {
-  await refreshState();
-
-  const template = getActiveTemplate(state);
-  const list = getActiveList(state);
-
-  const existing = list.fields.find((field) => areSelectorBundlesSimilar(field.selectorBundle, selectorBundle));
-
-  if (existing) {
-    const action = await openDuplicateDialog();
-    if (action === "cancel") return;
-
-    if (action === "update") {
-      existing.selectorBundle = selectorBundle;
-      existing.previewLabel = selectorPreview(selectorBundle);
-      existing.updatedAt = Date.now();
-
-      if (!existing.columnName) {
-        existing.columnName = requestedColumnName || nextGenericColumnName(list.fields);
-      }
-
-      await setState(state);
-      render();
-      return;
+    if (Date.now() > state.pendingUndo.expiresAt) {
+      await clearPendingUndo();
+      await render();
     }
-  }
-
-  let columnName = requestedColumnName || "";
-
-  if (!columnName && state.settings.showColumnNames) {
-    columnName = await openNameDialog(strings.columnName, strings.chooseColumnName, "");
-  }
-
-  if (!columnName) {
-    columnName = nextGenericColumnName(list.fields);
-  }
-
-  list.fields.push({
-    id: uuid("fld"),
-    columnName,
-    order: list.fields.length,
-    selectorBundle,
-    previewLabel: selectorPreview(selectorBundle),
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  });
-
-  list.fields = normalizeFields(list.fields);
-  await setState(state);
-  render();
+  }, 1000);
 }
 
-function openNameDialog(title, label, initialValue = "") {
-  return new Promise((resolve) => {
-    elements.nameDialogTitle.textContent = title;
-    elements.nameDialogLabel.textContent = label;
-    elements.nameDialogInput.value = initialValue;
-    elements.nameDialog.showModal();
-
-    const handler = () => {
-      const value = elements.nameDialog.returnValue === "ok"
-        ? elements.nameDialogInput.value.trim()
-        : "";
-      elements.nameDialog.removeEventListener("close", handler);
-      resolve(value);
-    };
-
-    elements.nameDialog.addEventListener("close", handler);
-  });
-}
-
-function openDuplicateDialog() {
-  return new Promise((resolve) => {
-    elements.duplicateDialog.showModal();
-
-    const handler = () => {
-      const value = elements.duplicateDialog.returnValue || "cancel";
-      elements.duplicateDialog.removeEventListener("close", handler);
-      resolve(value);
-    };
-
-    elements.duplicateDialog.addEventListener("close", handler);
-  });
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }

@@ -1,79 +1,80 @@
-import { getState, setState, getLanguageStrings } from "./shared.js";
+import { getState, updateSettings, saveState } from "./storage.js";
+import { t } from "./i18n.js";
 
-let state = await getState();
-let strings = getLanguageStrings(state.settings.language);
+const refs = {};
 
-const elements = {
-  settingsTitle: document.getElementById("settingsTitle"),
-  languageTitle: document.getElementById("languageTitle"),
-  languageSelect: document.getElementById("languageSelect"),
-  templateMatchesTitle: document.getElementById("templateMatchesTitle"),
-  templateNameHeader: document.getElementById("templateNameHeader"),
-  urlMatchHeader: document.getElementById("urlMatchHeader"),
-  templateTableBody: document.getElementById("templateTableBody"),
-  saveButton: document.getElementById("saveButton"),
-  saveStatus: document.getElementById("saveStatus")
-};
+document.addEventListener("DOMContentLoaded", init);
 
-bindEvents();
-render();
+async function init() {
+  cacheRefs();
+  bindEvents();
+  await render();
+}
+
+function cacheRefs() {
+  refs.settingsTitle = document.getElementById("settingsTitle");
+  refs.languageLabel = document.getElementById("languageLabel");
+  refs.languageSelect = document.getElementById("languageSelect");
+  refs.templateMatchesTitle = document.getElementById("templateMatchesTitle");
+  refs.templateNameHeader = document.getElementById("templateNameHeader");
+  refs.urlMatchHeader = document.getElementById("urlMatchHeader");
+  refs.templatesTbody = document.getElementById("templatesTbody");
+  refs.saveTemplatesBtn = document.getElementById("saveTemplatesBtn");
+}
 
 function bindEvents() {
-  elements.languageSelect.addEventListener("change", () => {
-    state.settings.language = elements.languageSelect.value;
-    strings = getLanguageStrings(state.settings.language);
-    render();
+  refs.languageSelect.addEventListener("change", async (e) => {
+    await updateSettings({ language: e.target.value });
+    await render();
   });
 
-  elements.saveButton.addEventListener("click", async () => {
-    const rows = [...elements.templateTableBody.querySelectorAll("tr")];
-    rows.forEach((row) => {
-      const templateId = row.dataset.templateId;
-      const input = row.querySelector("input");
-      const template = state.templates.find((item) => item.id === templateId);
-      if (template) {
-        template.urlMatch = input.value.trim();
-      }
+  refs.saveTemplatesBtn.addEventListener("click", async () => {
+    const state = await getState();
+    const templates = state.templates.map((template) => {
+      const input = document.querySelector(`input[data-template-id="${template.id}"]`);
+      return {
+        ...template,
+        urlMatch: input?.value?.trim() || template.urlMatch
+      };
     });
 
-    await setState(state);
-    elements.saveStatus.textContent = strings.saved;
-
-    setTimeout(() => {
-      elements.saveStatus.textContent = "";
-    }, 1500);
+    await saveState({ templates });
+    alert("Saved");
   });
 }
 
-function render() {
-  strings = getLanguageStrings(state.settings.language);
+async function render() {
+  const state = await getState();
+  const lang = state.settings.language;
 
-  elements.settingsTitle.textContent = strings.settingsTitle;
-  elements.languageTitle.textContent = strings.language;
-  elements.templateMatchesTitle.textContent = strings.templateMatches;
-  elements.templateNameHeader.textContent = strings.templateName;
-  elements.urlMatchHeader.textContent = strings.urlMatch;
-  elements.saveButton.textContent = strings.save;
-  elements.languageSelect.value = state.settings.language;
+  refs.settingsTitle.textContent = t(lang, "settings");
+  refs.languageLabel.textContent = t(lang, "language");
+  refs.templateMatchesTitle.textContent = t(lang, "templateMatches");
+  refs.templateNameHeader.textContent = t(lang, "nameTemplate");
+  refs.urlMatchHeader.textContent = t(lang, "urlMatch");
+  refs.saveTemplatesBtn.textContent = t(lang, "ok");
 
-  elements.templateTableBody.innerHTML = "";
+  refs.languageSelect.value = lang;
 
-  for (const template of state.templates) {
-    const tr = document.createElement("tr");
-    tr.dataset.templateId = template.id;
+  refs.templatesTbody.innerHTML = state.templates.map((template) => `
+    <tr>
+      <td>${escapeHtml(template.name)}</td>
+      <td>
+        <input
+          type="text"
+          data-template-id="${template.id}"
+          value="${escapeHtml(template.urlMatch || "")}"
+        />
+      </td>
+    </tr>
+  `).join("");
+}
 
-    const nameTd = document.createElement("td");
-    nameTd.textContent = template.name;
-
-    const urlTd = document.createElement("td");
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = template.urlMatch || "";
-    input.placeholder = "www.linkedin.com";
-    urlTd.appendChild(input);
-
-    tr.appendChild(nameTd);
-    tr.appendChild(urlTd);
-    elements.templateTableBody.appendChild(tr);
-  }
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }

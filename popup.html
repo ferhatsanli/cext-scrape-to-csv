@@ -1,81 +1,67 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8">
-  <title>Job Capture Assistant</title>
-  <link rel="stylesheet" href="popup.css">
+  <meta charset="utf-8" />
+  <title>Job Copy Extension</title>
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <div class="app">
     <header class="topbar">
-      <div>
-        <h1 id="appTitle">Job Capture Assistant</h1>
-        <div class="subline">
-          <span id="activeListLabel">Active List</span>
-          <select id="listSelect"></select>
-        </div>
-      </div>
-      <button id="openSettingsButton" class="secondary small">⚙</button>
+      <h1 id="appTitle">Job Copy Extension</h1>
+      <button id="openSettingsBtn" class="ghost-btn">Settings</button>
     </header>
 
-    <section class="controls">
-      <label class="checkbox-row">
-        <input type="checkbox" id="showColumnNamesCheckbox">
-        <span id="columnNamesLabel">Column Names</span>
-      </label>
-
-      <div class="button-row">
-        <button id="selectElementButton" class="primary"></button>
-        <button id="scrapeNowButton" class="primary"></button>
-      </div>
-
-      <div class="button-row">
-        <button id="newListButton" class="secondary"></button>
-        <button id="renameListButton" class="secondary"></button>
-        <button id="deleteListButton" class="danger"></button>
+    <section class="section">
+      <label class="label" for="templateSelect" id="activeTemplateLabel">Active Template</label>
+      <div class="row">
+        <select id="templateSelect"></select>
+        <button id="newTemplateBtn" class="ghost-btn small-btn">+</button>
+        <button id="renameTemplateBtn" class="ghost-btn small-btn">R</button>
+        <button id="deleteTemplateBtn" class="danger-btn small-btn">X</button>
       </div>
     </section>
 
-    <section class="table-wrap">
-      <table id="fieldsTable">
+    <section class="section">
+      <label class="label" for="listSelect" id="activeListLabel">Active List</label>
+      <div class="row">
+        <select id="listSelect"></select>
+        <button id="newListBtn" class="ghost-btn small-btn">+</button>
+        <button id="renameListBtn" class="ghost-btn small-btn">R</button>
+        <button id="deleteListBtn" class="danger-btn small-btn">X</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <label class="checkbox-row">
+        <input type="checkbox" id="showColumnNamesCheckbox" />
+        <span id="columnNamesLabel">Column Names</span>
+      </label>
+    </section>
+
+    <section class="section actions">
+      <button id="selectElementBtn" class="primary-btn">Select Element</button>
+      <button id="scrapeNowBtn" class="secondary-btn">Scrape Now</button>
+    </section>
+
+    <section class="section">
+      <table class="fields-table">
         <thead>
           <tr id="tableHeadRow"></tr>
         </thead>
-        <tbody id="fieldsTableBody"></tbody>
+        <tbody id="fieldsTbody"></tbody>
       </table>
-      <div id="emptyState" class="empty-state"></div>
+      <div id="emptyState" class="empty-state">No fields defined</div>
     </section>
 
-    <div id="toast" class="toast hidden">
-      <span id="toastText"></span>
-      <button id="toastUndoButton" class="link-button"></button>
-      <button id="toastDismissButton" class="link-button"></button>
+    <div id="undoBar" class="undo-bar hidden">
+      <span id="undoText">Field removed</span>
+      <div class="undo-actions">
+        <button id="undoBtn" class="ghost-btn">Undo</button>
+        <button id="dismissUndoBtn" class="ghost-btn">Dismiss</button>
+      </div>
     </div>
   </div>
-
-  <dialog id="nameDialog">
-    <form method="dialog" class="dialog-form">
-      <h2 id="nameDialogTitle"></h2>
-      <label class="dialog-label" for="nameDialogInput" id="nameDialogLabel"></label>
-      <input id="nameDialogInput" type="text" />
-      <menu class="dialog-actions">
-        <button value="cancel" id="nameDialogCancel"></button>
-        <button value="ok" id="nameDialogOk"></button>
-      </menu>
-    </form>
-  </dialog>
-
-  <dialog id="duplicateDialog">
-    <form method="dialog" class="dialog-form">
-      <h2 id="duplicateDialogTitle"></h2>
-      <p id="duplicateDialogMessage"></p>
-      <menu class="dialog-actions">
-        <button value="cancel" id="duplicateDialogCancel"></button>
-        <button value="duplicate" id="duplicateDialogDuplicate"></button>
-        <button value="update" id="duplicateDialogUpdate"></button>
-      </menu>
-    </form>
-  </dialog>
 
   <script type="module" src="popup.js"></script>
 </body>

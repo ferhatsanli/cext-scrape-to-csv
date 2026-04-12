@@ -1,39 +1,35 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8">
-  <title>Job Capture Assistant Settings</title>
-  <link rel="stylesheet" href="options.css">
+  <meta charset="utf-8" />
+  <title>Job Copy Extension Settings</title>
+  <link rel="stylesheet" href="options.css" />
 </head>
 <body>
   <main class="page">
-    <h1 id="settingsTitle"></h1>
+    <h1 id="settingsTitle">Settings</h1>
 
     <section class="card">
-      <h2 id="languageTitle"></h2>
+      <label for="languageSelect" id="languageLabel">Language</label>
       <select id="languageSelect">
         <option value="en">English</option>
-        <option value="tr">Türkçe</option>
+        <option value="tr">Turkce</option>
       </select>
     </section>
 
     <section class="card">
-      <h2 id="templateMatchesTitle"></h2>
-      <table>
+      <h2 id="templateMatchesTitle">Template Matches</h2>
+      <table class="templates-table">
         <thead>
           <tr>
-            <th id="templateNameHeader"></th>
-            <th id="urlMatchHeader"></th>
+            <th id="templateNameHeader">Template Name</th>
+            <th id="urlMatchHeader">URL Match</th>
           </tr>
         </thead>
-        <tbody id="templateTableBody"></tbody>
+        <tbody id="templatesTbody"></tbody>
       </table>
+      <button id="saveTemplatesBtn" class="primary-btn">Save</button>
     </section>
-
-    <div class="actions">
-      <button id="saveButton"></button>
-      <span id="saveStatus"></span>
-    </div>
   </main>
 
   <script type="module" src="options.js"></script>
