@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Job Capture Assistant",
+  "version": "0.1.0",
+  "description": "Capture selected job page fields and copy them as CSV.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "offscreen",
+    "clipboardWrite"
+  ],
+  "host_permissions": [],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Job Capture Assistant",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "start-pick-mode": {
+      "suggested_key": {
+        "default": "Alt+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Start element selection mode"
+    },
+    "scrape-now": {
+      "suggested_key": {
+        "default": "Alt+Shift+U",
+        "mac": "Command+Shift+U"
+      },
+      "description": "Scrape configured fields and copy CSV"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

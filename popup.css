@@ -1,0 +1,193 @@
+:root {
+  color-scheme: light dark;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 420px;
+  max-width: 420px;
+  background: #f8fafc;
+  color: #111827;
+}
+
+.app {
+  padding: 12px;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.topbar h1 {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+}
+
+.subline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.controls {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #111827;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button.primary {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+button.secondary {
+  background: white;
+}
+
+button.danger {
+  background: #dc2626;
+  color: white;
+  border-color: #dc2626;
+}
+
+button.small {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+.table-wrap {
+  margin-top: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+th, td {
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  padding: 8px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+th {
+  background: #f1f5f9;
+}
+
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.delete-button {
+  background: transparent;
+  border: none;
+  color: #dc2626;
+  font-size: 18px;
+  padding: 0;
+}
+
+.selector-preview {
+  display: inline-block;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-state {
+  padding: 12px;
+  text-align: center;
+  color: #64748b;
+}
+
+.toast {
+  margin-top: 12px;
+  padding: 10px;
+  background: #111827;
+  color: white;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.hidden {
+  display: none;
+}
+
+.link-button {
+  background: transparent;
+  border: none;
+  color: #93c5fd;
+  padding: 0;
+}
+
+dialog {
+  border: none;
+  border-radius: 12px;
+  padding: 0;
+  width: 320px;
+}
+
+.dialog-form {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.dialog-form h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.dialog-label {
+  display: block;
+}
+
+.dialog-form input {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+}

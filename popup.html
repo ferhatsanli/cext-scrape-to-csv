@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Job Capture Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <h1 id="appTitle">Job Capture Assistant</h1>
+        <div class="subline">
+          <span id="activeListLabel">Active List</span>
+          <select id="listSelect"></select>
+        </div>
+      </div>
+      <button id="openSettingsButton" class="secondary small">⚙</button>
+    </header>
+
+    <section class="controls">
+      <label class="checkbox-row">
+        <input type="checkbox" id="showColumnNamesCheckbox">
+        <span id="columnNamesLabel">Column Names</span>
+      </label>
+
+      <div class="button-row">
+        <button id="selectElementButton" class="primary"></button>
+        <button id="scrapeNowButton" class="primary"></button>
+      </div>
+
+      <div class="button-row">
+        <button id="newListButton" class="secondary"></button>
+        <button id="renameListButton" class="secondary"></button>
+        <button id="deleteListButton" class="danger"></button>
+      </div>
+    </section>
+
+    <section class="table-wrap">
+      <table id="fieldsTable">
+        <thead>
+          <tr id="tableHeadRow"></tr>
+        </thead>
+        <tbody id="fieldsTableBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty-state"></div>
+    </section>
+
+    <div id="toast" class="toast hidden">
+      <span id="toastText"></span>
+      <button id="toastUndoButton" class="link-button"></button>
+      <button id="toastDismissButton" class="link-button"></button>
+    </div>
+  </div>
+
+  <dialog id="nameDialog">
+    <form method="dialog" class="dialog-form">
+      <h2 id="nameDialogTitle"></h2>
+      <label class="dialog-label" for="nameDialogInput" id="nameDialogLabel"></label>
+      <input id="nameDialogInput" type="text" />
+      <menu class="dialog-actions">
+        <button value="cancel" id="nameDialogCancel"></button>
+        <button value="ok" id="nameDialogOk"></button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="duplicateDialog">
+    <form method="dialog" class="dialog-form">
+      <h2 id="duplicateDialogTitle"></h2>
+      <p id="duplicateDialogMessage"></p>
+      <menu class="dialog-actions">
+        <button value="cancel" id="duplicateDialogCancel"></button>
+        <button value="duplicate" id="duplicateDialogDuplicate"></button>
+        <button value="update" id="duplicateDialogUpdate"></button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
