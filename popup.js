@@ -17,6 +17,7 @@ import {
   reorderFields
 } from "./storage.js";
 import { t } from "./i18n.js";
+import { promptDialog } from "./dialogs.js";
 
 const refs = {};
 

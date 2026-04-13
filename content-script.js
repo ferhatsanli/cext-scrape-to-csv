@@ -172,12 +172,15 @@
       try {
         const el = document.querySelector(selector);
         if (el) {
+          console.log("Matched selector:", selector, "Text:", normalizeText(el.textContent || ""));
           return normalizeText(el.textContent || "");
         }
-      } catch {
+      } catch (error) {
+        console.warn("Bad selector:", selector, error);
       }
     }
 
+    console.warn("No selector matched:", bundle);
     return "";
   }
 
@@ -214,6 +217,7 @@
       "data-test-id",
       "data-qa",
       "data-view-name",
+      "data-tracking-control-name",
       "aria-label",
       "name",
       "role"
@@ -258,8 +262,14 @@
 
   function buildClassBasedSelector(element) {
     const tagName = element.tagName.toLowerCase();
-    const classes = [...element.classList].filter(Boolean).slice(0, 3);
+    const classes = [...element.classList]
+      .filter(Boolean)
+      .filter((cls) => !/\d/.test(cls))
+      .filter((cls) => !cls.includes("--"))
+      .slice(0, 2);
+
     if (!classes.length) return null;
+
     return `${tagName}.${classes.map(cssEscapeSafe).join(".")}`;
   }
 

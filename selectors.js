@@ -21,6 +21,7 @@ export function buildSelectorBundle(element) {
     "data-test-id",
     "data-qa",
     "data-view-name",
+    "data-tracking-control-name",
     "aria-label",
     "name",
     "role"
@@ -74,8 +75,14 @@ function dedupeSelectors(selectors) {
 
 function buildClassBasedSelector(element) {
   const tagName = element.tagName.toLowerCase();
-  const classes = [...element.classList].filter(Boolean).slice(0, 3);
+  const classes = [...element.classList]
+    .filter(Boolean)
+    .filter((cls) => !/\d/.test(cls))
+    .filter((cls) => !cls.includes("--"))
+    .slice(0, 2);
+
   if (!classes.length) return null;
+
   return `${tagName}.${classes.map(cssEscapeSafe).join(".")}`;
 }
 
