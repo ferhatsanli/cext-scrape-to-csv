@@ -63,6 +63,9 @@
     ensureOverlay();
 
     document.addEventListener("mousemove", onMouseMove, true);
+    document.addEventListener("pointerdown", swallowEvent, true);
+    document.addEventListener("mousedown", swallowEvent, true);
+    document.addEventListener("mouseup", swallowEvent, true);
     document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeyDown, true);
   }
@@ -70,11 +73,15 @@
   function exitSelectionMode() {
     selectionMode = false;
     hoverEl = null;
+
     if (overlay) {
       overlay.style.display = "none";
     }
 
     document.removeEventListener("mousemove", onMouseMove, true);
+    document.removeEventListener("pointerdown", swallowEvent, true);
+    document.removeEventListener("mousedown", swallowEvent, true);
+    document.removeEventListener("mouseup", swallowEvent, true);
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("keydown", onKeyDown, true);
   }
@@ -105,8 +112,11 @@
   }
 
   async function onClick(event) {
+    if (!selectionMode) return;
+
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
 
     if (!hoverEl) return;
 
@@ -137,6 +147,13 @@
     if (event.key === "Escape") {
       exitSelectionMode();
     }
+  }
+
+  function swallowEvent(event) {
+    if (!selectionMode) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
   }
 
   function scrapeFields({ template, list, settings }) {
