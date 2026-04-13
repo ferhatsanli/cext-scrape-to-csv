@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Job Copy Extension",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Select fields from job pages and copy them as CSV.",
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "notifications",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "<all_urls>"

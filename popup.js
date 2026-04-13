@@ -11,16 +11,12 @@ import {
   createTemplate,
   renameTemplate,
   deleteTemplate,
-  nextGenericColumnName,
-  upsertField,
   deleteField,
   undoPendingDelete,
   clearPendingUndo,
   reorderFields
 } from "./storage.js";
 import { t } from "./i18n.js";
-import { promptDialog, confirmThreeWayDialog } from "./dialogs.js";
-import { isDuplicateField } from "./selectors.js";
 
 const refs = {};
 
@@ -29,7 +25,6 @@ document.addEventListener("DOMContentLoaded", init);
 async function init() {
   cacheRefs();
   bindEvents();
-  chrome.runtime.onMessage.addListener(onRuntimeMessage);
   await render();
   startUndoWatcher();
 }
@@ -85,9 +80,25 @@ function bindEvents() {
 
   refs.scrapeNowBtn.addEventListener("click", async () => {
     const response = await chrome.runtime.sendMessage({ type: "SCRAPE_NOW" });
+
     if (!response?.ok) {
       alert(response?.error || "Scrape failed");
       return;
+    }
+
+    const text = response?.result?.clipboardText || "";
+
+    if (!text) {
+      alert("Nothing to copy");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Copied to clipboard");
+    } catch (error) {
+      console.error("Clipboard write failed:", error);
+      alert("Clipboard write failed");
     }
   });
 
@@ -191,87 +202,6 @@ function bindEvents() {
     await clearPendingUndo();
     await render();
   });
-}
-
-async function onRuntimeMessage(message) {
-  if (message?.type === "ELEMENT_SELECTED") {
-    await handleElementSelected(message.payload);
-  }
-}
-
-async function handleElementSelected(payload) {
-  const state = await getState();
-  const template = getActiveTemplate(state);
-  const list = getActiveList(state);
-
-  if (!template || !list) return;
-
-  const lang = state.settings.language;
-  const duplicate = list.fields.find((f) => isDuplicateField(f, payload.selectorBundle));
-
-  let columnName;
-  if (state.settings.showColumnNames) {
-    const result = await promptDialog({
-      title: t(lang, "columnName"),
-      message: t(lang, "columnNamePrompt"),
-      defaultValue: ""
-    });
-
-    if (result.action === "ok" && result.value) {
-      columnName = result.value;
-    } else {
-      columnName = nextGenericColumnName(list.fields);
-    }
-  } else {
-    columnName = nextGenericColumnName(list.fields);
-  }
-
-  const baseField = {
-    columnName,
-    order: list.fields.length + 1,
-    selectorBundle: payload.selectorBundle,
-    previewLabel: payload.previewLabel
-  };
-
-  if (duplicate) {
-    const action = await confirmThreeWayDialog({
-      title: t(lang, "duplicateTitle"),
-      message: t(lang, "duplicateMessage")
-    });
-
-    if (action === "cancel") return;
-
-    if (action === "update") {
-      await upsertField({
-        templateId: template.id,
-        listId: list.id,
-        mode: "update",
-        field: {
-          ...duplicate,
-          ...baseField,
-          id: duplicate.id
-        }
-      });
-    }
-
-    if (action === "duplicate") {
-      await upsertField({
-        templateId: template.id,
-        listId: list.id,
-        mode: "create",
-        field: baseField
-      });
-    }
-  } else {
-    await upsertField({
-      templateId: template.id,
-      listId: list.id,
-      mode: "create",
-      field: baseField
-    });
-  }
-
-  await render();
 }
 
 async function render() {

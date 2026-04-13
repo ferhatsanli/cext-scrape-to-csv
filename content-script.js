@@ -19,11 +19,40 @@
     }
 
     if (message?.type === "SCRAPE_FIELDS") {
-      const result = scrapeFields(message.payload);
-      copyText(result.clipboardText)
-        .then(() => sendResponse({ ok: true, ...result }))
-        .catch((error) => sendResponse({ ok: false, error: error.message }));
-      return true;
+      try {
+        const result = scrapeFields(message.payload);
+        sendResponse({ ok: true, ...result });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message });
+      }
+      return;
+    }
+    if (message?.type === "ASK_COLUMN_NAME") {
+      const value = window.prompt("Column name:", message.payload?.defaultValue || "");
+      if (value === null) {
+        sendResponse({ action: "cancel", value: null });
+      } else {
+        sendResponse({ action: "ok", value });
+      }
+      return;
+    }
+
+    if (message?.type === "ASK_DUPLICATE_ACTION") {
+      const value = window.prompt(
+        "A similar field already exists.\nType one of: update, duplicate, cancel",
+        "cancel"
+      );
+
+      const normalized = String(value || "cancel").trim().toLowerCase();
+
+      if (normalized === "update") {
+        sendResponse({ action: "update" });
+      } else if (normalized === "duplicate") {
+        sendResponse({ action: "duplicate" });
+      } else {
+        sendResponse({ action: "cancel" });
+      }
+      return;
     }
   });
 
@@ -75,7 +104,7 @@
     overlay.style.height = `${rect.height}px`;
   }
 
-  function onClick(event) {
+  async function onClick(event) {
     event.preventDefault();
     event.stopPropagation();
 
@@ -84,16 +113,24 @@
     const selectorBundle = buildSelectorBundle(hoverEl);
     const previewLabel = selectorPreview(selectorBundle);
 
-    chrome.runtime.sendMessage({
-      type: "ELEMENT_SELECTED",
-      payload: {
-        selectorBundle,
-        previewLabel,
-        pageUrl: location.href
-      }
-    });
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "ELEMENT_SELECTED",
+        payload: {
+          selectorBundle,
+          previewLabel,
+          pageUrl: location.href
+        }
+      });
 
-    exitSelectionMode();
+      if (!response?.ok) {
+        console.error("ELEMENT_SELECTED failed:", response?.error);
+      }
+    } catch (error) {
+      console.error("ELEMENT_SELECTED message failed:", error);
+    } finally {
+      exitSelectionMode();
+    }
   }
 
   function onKeyDown(event) {
@@ -142,22 +179,6 @@
     }
 
     return "";
-  }
-
-  async function copyText(text) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-    }
   }
 
   function normalizeText(value) {
